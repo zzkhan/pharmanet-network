@@ -96,7 +96,7 @@ function checkPrereqs() {
 
   ## check for cfssl binaries
   if [ "$CRYPTO" == "cfssl" ]; then
-  
+
     cfssl version > /dev/null 2>&1
     if [[ $? -ne 0 ]]; then
       errorln "cfssl binary not found.."
@@ -154,6 +154,8 @@ function checkPrereqs() {
 # "organizations/ordererOrganizations" directory.
 
 # Create Organization crypto material using cryptogen or CAs
+ORGS="org1 org2 org3 org4 org5"
+
 function createOrgs() {
   if [ -d "organizations/peerOrganizations" ]; then
     rm -Rf organizations/peerOrganizations && rm -Rf organizations/ordererOrganizations
@@ -167,25 +169,27 @@ function createOrgs() {
     fi
     infoln "Generating certificates using cryptogen tool"
 
-    infoln "Creating Org1 Identities"
+    for ORG in $ORGS; do
+      infoln "Creating ${ORG} Identities"
 
-    set -x
-    cryptogen generate --config=./organizations/cryptogen/crypto-config-org1.yaml --output="organizations"
-    res=$?
-    { set +x; } 2>/dev/null
-    if [ $res -ne 0 ]; then
-      fatalln "Failed to generate certificates..."
-    fi
+      set -x
+      cryptogen generate --config=./organizations/cryptogen/crypto-config-$ORG.yaml --output="organizations"
+      res=$?
+      { set +x; } 2>/dev/null
+      if [ $res -ne 0 ]; then
+        fatalln "Failed to generate certificates..."
+      fi
+    done
 
-    infoln "Creating Org2 Identities"
-
-    set -x
-    cryptogen generate --config=./organizations/cryptogen/crypto-config-org2.yaml --output="organizations"
-    res=$?
-    { set +x; } 2>/dev/null
-    if [ $res -ne 0 ]; then
-      fatalln "Failed to generate certificates..."
-    fi
+#    infoln "Creating Org2 Identities"
+#
+#    set -x
+#    cryptogen generate --config=./organizations/cryptogen/crypto-config-org2.yaml --output="organizations"
+#    res=$?
+#    { set +x; } 2>/dev/null
+#    if [ $res -ne 0 ]; then
+#      fatalln "Failed to generate certificates..."
+#    fi
 
     infoln "Creating Orderer Org Identities"
 
@@ -196,7 +200,6 @@ function createOrgs() {
     if [ $res -ne 0 ]; then
       fatalln "Failed to generate certificates..."
     fi
-
   fi
 
   # Create crypto material using cfssl
@@ -212,12 +215,27 @@ function createOrgs() {
     peer_cert peer peer0.org2.example.com org2
     peer_cert admin Admin@org2.example.com org2
 
+    infoln "Creating Org3 Identities"
+    #function_name cert-type   CN   org
+    peer_cert peer peer0.org3.example.com org3
+    peer_cert admin Admin@org3.example.com org3
+
+    infoln "Creating Org4 Identities"
+    #function_name cert-type   CN   org
+    peer_cert peer peer0.org4.example.com org4
+    peer_cert admin Admin@org4.example.com org4
+
+    infoln "Creating Org5 Identities"
+    #function_name cert-type   CN   org
+    peer_cert peer peer0.org5.example.com org5
+    peer_cert admin Admin@org5.example.com org5
+
     infoln "Creating Orderer Org Identities"
-    #function_name cert-type   CN   
+    #function_name cert-type   CN
     orderer_cert orderer orderer.example.com
     orderer_cert admin Admin@example.com
 
-  fi 
+  fi
 
   # Create crypto material using Fabric CA
   if [ "$CRYPTO" == "Certificate Authorities" ]; then
@@ -235,15 +253,29 @@ function createOrgs() {
       fi
     done
 
-    infoln "Creating Org1 Identities"
+    for ORG in $ORGS; do
+      infoln "Creating Org1${ORG} Identities"
 
-    createOrg1
+      createOrg "$ORG"
+    done
 
-    infoln "Creating Org2 Identities"
-
-    createOrg2
-
-    infoln "Creating Orderer Org Identities"
+#    infoln "Creating Org2 Identities"
+#
+#    createOrg2
+#
+#    infoln "Creating Org3 Identities"
+#
+#    createOrg3
+#
+#    infoln "Creating Org4 Identities"
+#
+#    createOrg4
+#
+#    infoln "Creating Org5 Identities"
+#
+#    createOrg5
+#
+#    infoln "Creating Orderer Org Identities"
 
     createOrderer
 
@@ -386,7 +418,7 @@ function listChaincode() {
 
 }
 
-## Call the script to invoke 
+## Call the script to invoke
 function invokeChaincode() {
 
   export FABRIC_CFG_PATH=${PWD}/../config
@@ -400,11 +432,11 @@ function invokeChaincode() {
 
 }
 
-## Call the script to query chaincode 
+## Call the script to query chaincode
 function queryChaincode() {
 
   export FABRIC_CFG_PATH=${PWD}/../config
-  
+
   . scripts/envVar.sh
   . scripts/ccutils.sh
 
@@ -609,7 +641,7 @@ while [[ $# -ge 1 ]] ; do
   -ccqc )
     CC_QUERY_CONSTRUCTOR="$2"
     shift
-    ;;    
+    ;;
   * )
     errorln "Unknown flag: $key"
     printHelp

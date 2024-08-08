@@ -9,161 +9,170 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path"
-	"time"
-
 	"github.com/hyperledger/fabric-gateway/pkg/client"
-	"github.com/hyperledger/fabric-gateway/pkg/identity"
 	"github.com/hyperledger/fabric-protos-go-apiv2/gateway"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 )
 
-const (
-	mspID        = "Org1MSP"
-	cryptoPath   = "../../test-network/organizations/peerOrganizations/org1.example.com"
-	certPath     = cryptoPath + "/users/User1@org1.example.com/msp/signcerts"
-	keyPath      = cryptoPath + "/users/User1@org1.example.com/msp/keystore"
-	tlsCertPath  = cryptoPath + "/peers/peer0.org1.example.com/tls/ca.crt"
-	peerEndpoint = "dns:///localhost:7051"
-	gatewayPeer  = "peer0.org1.example.com"
-)
+type ManufacturerClient struct {
+	client *PharmaClient
+}
 
-var now = time.Now()
-var assetId = fmt.Sprintf("asset%d", now.Unix()*1e3+int64(now.Nanosecond())/1e6)
+func NewManufacturerClient() *ManufacturerClient {
+	return &ManufacturerClient{client: NewPharmaClient(manufacturer)}
+}
+func (m *ManufacturerClient) registerDrug(drugName string, tagId string, crps []Crp) {
+	fmt.Printf("\n--> registerDrug, creates new drug with ID %s \n", tagId)
 
-func main() {
-	// The gRPC client connection should be shared by all Gateway connections to this endpoint
-	clientConnection := newGrpcConnection()
-	defer clientConnection.Close()
+	marshal, err := json.Marshal(crps)
+	if err != nil {
+		panic(fmt.Errorf("marshalling failed: %w", err))
+	}
+	crpData := map[string][]byte{
+		"crps": marshal,
+	}
+	newDrug := Drug{
+		Name:    drugName,
+		TagId:   tagId,
+		MfgDate: "21/06/2024",
+	}
 
-	id := newIdentity()
-	sign := newSign()
+	marshalledDrug, err := json.Marshal(newDrug)
+	if err != nil {
+		panic(fmt.Errorf("marshall error: %w", err))
+	}
 
-	// Create a Gateway connection for a specific client identity
-	gw, err := client.Connect(
-		id,
-		client.WithSign(sign),
-		client.WithClientConnection(clientConnection),
-		// Default timeouts for different gRPC calls
-		client.WithEvaluateTimeout(5*time.Second),
-		client.WithEndorseTimeout(15*time.Second),
-		client.WithSubmitTimeout(5*time.Second),
-		client.WithCommitStatusTimeout(1*time.Minute),
+	res, err := m.client.getContract("drug").Submit("drug-registration:RegisterDrug",
+		client.WithTransient(crpData),
+		client.WithArguments(string(marshalledDrug)))
+
+	if err != nil {
+		panic(fmt.Errorf("failed to submit transaction: %w", err))
+	}
+
+	fmt.Printf("*** Transaction committed successfully %s\n", res)
+}
+
+func (m *ManufacturerClient) createShipment(buyerOrg string, drugName string, tagId string, transporterOrg string) {
+	fmt.Printf("\n--> createShipment, creates new shipment for buyer %s of drugname %s with tagId %s shipped by transporter %s \n", buyerOrg, drugName, tagId, transporterOrg)
+
+	res, err := m.client.getContract("drug").Submit("drug-transfer:createDrugShipment",
+		client.WithArguments(buyerOrg, drugName, tagId, transporterOrg))
+
+	if err != nil {
+		panic(fmt.Errorf("failed to submit transaction: %w", err))
+	}
+	fmt.Printf("*** Transaction committed successfully %s\n", res)
+}
+
+func (m *ManufacturerClient) getUnassignedCrps(drugName string, tagId string) []Crp {
+	res, err := m.client.getContract("drug").Evaluate("drug-verification:getUnassignedCrps",
+		client.WithArguments(drugName, tagId))
+
+	if err != nil {
+		panic(fmt.Errorf("failed to submit transaction: %w", err))
+	}
+	fmt.Printf("*** Transaction committed successfully %s\n", res)
+	var unassignedCrps []Crp
+	err = json.Unmarshal(res, &unassignedCrps)
+	return unassignedCrps
+}
+
+func (m *ManufacturerClient) getAssignedCrps(drugName string, tagId string, drugOwnerOrg string) []Crp {
+	res, err := m.client.getContract("drug").Evaluate("drug-verification:getAssignedCrps",
+		client.WithArguments(drugName, tagId, drugOwnerOrg))
+
+	if err != nil {
+		panic(fmt.Errorf("query getAssignedCrps failed: %w", err))
+	}
+	fmt.Printf("*** getAssignedCrps response %s\n", res)
+	var unassignedCrps []Crp
+	err = json.Unmarshal(res, &unassignedCrps)
+	return unassignedCrps
+}
+
+func (m *ManufacturerClient) assignCrps(drugName string, tagId string, assigneeOrg string, assign []Crp) {
+	fmt.Printf("\n--> assignCrps, assigned CRPs to assignee %s for drugname %s with tagId %s \n", assigneeOrg, drugName, tagId)
+
+	marshal, err := json.Marshal(assign)
+	if err != nil {
+		panic(fmt.Errorf("failed to submit transaction: %w", err))
+	}
+	fmt.Printf("*** marshalled CRPs %s\n", marshal)
+	transientData := map[string][]byte{
+		"assignment-crps": marshal,
+	}
+
+	res, err := m.client.getContract("drug").Submit("drug-verification:assignCRPs",
+		client.WithArguments(drugName, tagId, assigneeOrg),
+		client.WithTransient(transientData),
 	)
+
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to submit transaction: %w", err))
 	}
-	defer gw.Close()
-
-	// Override default values for chaincode and channel name as they may differ in testing contexts.
-	chaincodeName := "basic"
-	if ccname := os.Getenv("CHAINCODE_NAME"); ccname != "" {
-		chaincodeName = ccname
-	}
-
-	channelName := "mychannel"
-	if cname := os.Getenv("CHANNEL_NAME"); cname != "" {
-		channelName = cname
-	}
-
-	network := gw.GetNetwork(channelName)
-	contract := network.GetContract(chaincodeName)
-
-	initLedger(contract)
-	getAllAssets(contract)
-	createAsset(contract)
-	readAssetByID(contract)
-	transferAssetAsync(contract)
-	exampleErrorHandling(contract)
+	fmt.Printf("*** Transaction committed successfully %s\n", res)
 }
 
-// newGrpcConnection creates a gRPC connection to the Gateway server.
-func newGrpcConnection() *grpc.ClientConn {
-	certificatePEM, err := os.ReadFile(tlsCertPath)
+func (m *ManufacturerClient) assignChallenges(drugName string, tagId string, assigneeOrg string, assignedCrps []Crp) {
+	marshal, err := json.Marshal(assignedCrps)
 	if err != nil {
-		panic(fmt.Errorf("failed to read TLS certifcate file: %w", err))
+		panic(fmt.Errorf("marshalling failed: %w", err))
+	}
+	fmt.Printf("*** marshalled CRPs %s\n", marshal)
+	transientData := map[string][]byte{
+		"assignment-crps": marshal,
 	}
 
-	certificate, err := identity.CertificateFromPEM(certificatePEM)
+	res, err := m.client.getContract("drug").Submit("drug-verification:assignChallenges",
+		client.WithArguments(drugName, tagId, assigneeOrg),
+		client.WithTransient(transientData),
+	)
+
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to submit transaction: %w", err))
 	}
-
-	certPool := x509.NewCertPool()
-	certPool.AddCert(certificate)
-	transportCredentials := credentials.NewClientTLSFromCert(certPool, gatewayPeer)
-
-	connection, err := grpc.NewClient(peerEndpoint, grpc.WithTransportCredentials(transportCredentials))
-	if err != nil {
-		panic(fmt.Errorf("failed to create gRPC connection: %w", err))
-	}
-
-	return connection
+	fmt.Printf("*** Transaction committed successfully %s\n", res)
 }
 
-// newIdentity creates a client identity for this Gateway connection using an X.509 certificate.
-func newIdentity() *identity.X509Identity {
-	certificatePEM, err := readFirstFile(certPath)
+func (m *ManufacturerClient) shareAssignedCrps(drugName string, tagId string, drugOwnerOrg string, assignedCrps []Crp) {
+	fmt.Printf("\n--> shareAssignedCrps, shares assigned CRPs with assignee %s for drugname %s with tagId %s \n", drugOwnerOrg, drugName, tagId)
+
+	marshal, err := json.Marshal(assignedCrps)
 	if err != nil {
-		panic(fmt.Errorf("failed to read certificate file: %w", err))
+		panic(fmt.Errorf("marshalling failed: %w", err))
+	}
+	transientData := map[string][]byte{
+		"assigned-crps": marshal,
 	}
 
-	certificate, err := identity.CertificateFromPEM(certificatePEM)
+	res, err := m.client.getContract("drug").Submit("drug-verification:shareAssignedCrps",
+		client.WithArguments(drugName, tagId, drugOwnerOrg),
+		client.WithTransient(transientData),
+	)
+
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to submit transaction: %w", err))
 	}
-
-	id, err := identity.NewX509Identity(mspID, certificate)
-	if err != nil {
-		panic(err)
-	}
-
-	return id
-}
-
-// newSign creates a function that generates a digital signature from a message digest using a private key.
-func newSign() identity.Sign {
-	privateKeyPEM, err := readFirstFile(keyPath)
-	if err != nil {
-		panic(fmt.Errorf("failed to read private key file: %w", err))
-	}
-
-	privateKey, err := identity.PrivateKeyFromPEM(privateKeyPEM)
-	if err != nil {
-		panic(err)
-	}
-
-	sign, err := identity.NewPrivateKeySign(privateKey)
-	if err != nil {
-		panic(err)
-	}
-
-	return sign
-}
-
-func readFirstFile(dirPath string) ([]byte, error) {
-	dir, err := os.Open(dirPath)
-	if err != nil {
-		return nil, err
-	}
-
-	fileNames, err := dir.Readdirnames(1)
-	if err != nil {
-		return nil, err
-	}
-
-	return os.ReadFile(path.Join(dirPath, fileNames[0]))
+	fmt.Printf("*** Transaction committed successfully %s\n", res)
 }
 
 // This type of transaction would typically only be run once by an application the first time it was started after its
 // initial deployment. A new version of the chaincode deployed later would likely not need to run an "init" function.
+func readDrug(contract *client.Contract, serialNo string) {
+	fmt.Println("\n--> Evaluate Transaction: readDrug")
+
+	evaluateResult, err := contract.EvaluateTransaction("ReadDrug", serialNo)
+	if err != nil {
+		panic(fmt.Errorf("failed to evaluate transaction: %w", err))
+	}
+	result := formatJSON(evaluateResult)
+
+	fmt.Printf("*** Result:%s\n", result)
+}
 func initLedger(contract *client.Contract) {
 	fmt.Printf("\n--> Submit Transaction: InitLedger, function creates the initial set of assets on the ledger \n")
 
@@ -189,15 +198,18 @@ func getAllAssets(contract *client.Contract) {
 }
 
 // Submit a transaction synchronously, blocking until it has been committed to the ledger.
-func createAsset(contract *client.Contract) {
-	fmt.Printf("\n--> Submit Transaction: CreateAsset, creates new asset with ID, Color, Size, Owner and AppraisedValue arguments \n")
+func transferDrug(contract *client.Contract, serialNumber string, newOwner string) {
+	fmt.Printf("\n--> transferDrug, drug with ID %s to owner %s \n", serialNumber, newOwner)
 
-	_, err := contract.SubmitTransaction("CreateAsset", assetId, "yellow", "5", "Tom", "1300")
+	res, err := contract.Submit("TransferAsset",
+		client.WithArguments(serialNumber, newOwner),
+		client.WithEndorsingOrganizations("Org1MSP", newOwner))
+
 	if err != nil {
-		panic(fmt.Errorf("failed to submit transaction: %w", err))
+		panic(fmt.Errorf("error transferring drug: %w", err))
 	}
 
-	fmt.Printf("*** Transaction committed successfully\n")
+	fmt.Printf("*** Transaction committed successfully %s\n", res)
 }
 
 // Evaluate a transaction by assetID to query ledger state.
@@ -267,7 +279,7 @@ func exampleErrorHandling(contract *client.Contract) {
 		panic(fmt.Errorf("unexpected error type %T: %w", err, err))
 	}
 
-	// Any error that originates from a peer or orderer node external to the gateway will have its details
+	// Any error that originates from a peer or orderer node external to the createGateway will have its details
 	// embedded within the gRPC status error. The following code shows how to extract that.
 	statusErr := status.Convert(err)
 

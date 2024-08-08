@@ -31,19 +31,25 @@ createAnchorPeerUpdate() {
   elif [ $ORG -eq 3 ]; then
     HOST="peer0.org3.example.com"
     PORT=11051
+  elif [ $ORG -eq 4 ]; then
+    HOST="peer0.org4.example.com"
+    PORT=13051
+  elif [ $ORG -eq 5 ]; then
+    HOST="peer0.org5.example.com"
+    PORT=15051
   else
     errorln "Org${ORG} unknown"
   fi
 
   set -x
-  # Modify the configuration to append the anchor peer 
+  # Modify the configuration to append the anchor peer
   jq '.channel_group.groups.Application.groups.'${CORE_PEER_LOCALMSPID}'.values += {"AnchorPeers":{"mod_policy": "Admins","value":{"anchor_peers": [{"host": "'$HOST'","port": '$PORT'}]},"version": "0"}}' ${TEST_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}config.json > ${TEST_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}modified_config.json
   res=$?
   { set +x; } 2>/dev/null
   verifyResult $res "Channel configuration update for anchor peer failed, make sure you have jq installed"
-  
 
-  # Compute a config update, based on the differences between 
+
+  # Compute a config update, based on the differences between
   # {orgmsp}config.json and {orgmsp}modified_config.json, write
   # it as a transaction to {orgmsp}anchors.tx
   createConfigUpdate ${CHANNEL_NAME} ${TEST_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}config.json ${TEST_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}modified_config.json ${TEST_NETWORK_HOME}/channel-artifacts/${CORE_PEER_LOCALMSPID}anchors.tx
@@ -62,6 +68,6 @@ CHANNEL_NAME=$2
 
 setGlobals $ORG
 
-createAnchorPeerUpdate 
+createAnchorPeerUpdate
 
-updateAnchorPeer 
+updateAnchorPeer

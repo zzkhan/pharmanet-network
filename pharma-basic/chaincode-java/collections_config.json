@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Org1MSPOrg3MSPCRPCollection",
+    "policy": "OR('Org1MSP.member', 'Org3MSP.member')",
+    "requiredPeerCount": 1,
+    "maxPeerCount": 1,
+    "blockToLive": 1000000,
+    "memberOnlyRead": true,
+    "memberOnlyWrite": true,
+    "endorsementPolicy": {
+      "signaturePolicy": "OR('Org1MSP.member','Org3MSP.member')"
+    }
+  },
+  {
+    "name": "Org1MSPOrg4MSPCRPCollection",
+    "policy": "OR('Org1MSP.member', 'Org4MSP.member')",
+    "requiredPeerCount": 1,
+    "maxPeerCount": 1,
+    "blockToLive": 1000000,
+    "memberOnlyRead": true,
+    "memberOnlyWrite": true,
+    "endorsementPolicy": {
+      "signaturePolicy": "OR('Org1MSP.member','Org4MSP.member')"
+    }
+  },
+  {
+    "name": "Org1MSPOrg5MSPCRPCollection",
+    "policy": "OR('Org1MSP.member', 'Org5MSP.member')",
+    "requiredPeerCount": 1,
+    "maxPeerCount": 1,
+    "blockToLive": 1000000,
+    "memberOnlyRead": true,
+    "memberOnlyWrite": true,
+    "endorsementPolicy": {
+      "signaturePolicy": "OR('Org1MSP.member','Org5MSP.member')"
+    }
+  }
+]

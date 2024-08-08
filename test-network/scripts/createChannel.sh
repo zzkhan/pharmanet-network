@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# imports  
+# imports
 . scripts/envVar.sh
 
 CHANNEL_NAME="$1"
@@ -92,7 +92,7 @@ joinChannel() {
 
 setAnchorPeer() {
   ORG=$1
-  . scripts/setAnchorPeer.sh $ORG $CHANNEL_NAME 
+  . scripts/setAnchorPeer.sh $ORG $CHANNEL_NAME
 }
 
 
@@ -123,11 +123,23 @@ infoln "Joining org1 peer to the channel..."
 joinChannel 1
 infoln "Joining org2 peer to the channel..."
 joinChannel 2
+infoln "Joining org3 peer to the channel..."
+joinChannel 3
+infoln "Joining org4 peer to the channel..."
+joinChannel 4
+infoln "Joining org5 peer to the channel..."
+joinChannel 5
 
 ## Set the anchor peers for each org in the channel
 infoln "Setting anchor peer for org1..."
 setAnchorPeer 1
 infoln "Setting anchor peer for org2..."
 setAnchorPeer 2
+infoln "Setting anchor peer for org3..."
+setAnchorPeer 3
+infoln "Setting anchor peer for org4..."
+setAnchorPeer 4
+infoln "Setting anchor peer for org5..."
+setAnchorPeer 5
 
 successln "Channel '$CHANNEL_NAME' joined"
