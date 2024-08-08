@@ -1,27 +1,32 @@
-import { Request, Response } from "express";
+import { Application, Request, Response} from "express";
+import {ProposalOptions, Proposal} from '@hyperledger/fabric-gateway'
+
 const utf8Decoder = new TextDecoder();
-import { Connection } from "./connection";
+import {Connection} from "./connection";
 export class AssetRouter {
-    public routes(app): void {
-        app.route('/list')
+    public routes(app: Application): void {
+        app.route('/drugs')
             .get(async (req: Request, res: Response) => {
-                const resultBytes = Connection.contract.evaluateTransaction('GetAllAssets');
-                const resultJson = utf8Decoder.decode(await resultBytes);
-                const result = JSON.parse(resultJson);
-                res.status(200).send(result);
+                try {
+                    const resultBytes = await Connection.contract.evaluateTransaction('drug-registration:ReadAllDrugs')
+                    const resultJson = utf8Decoder.decode(await resultBytes);
+                    const result = JSON.parse(resultJson);
+                    res.status(200).send(result);
+                } catch (err: any){
+                    console.error(err.details)
+                    res.status(500).send(err.details);
+                }
             })
-        app.route('/create')
+        app.route('/drugs')
             .post((req: Request, res: Response) => {
                 console.log(req.body)
                 var Id = Date.now();
                 var json = JSON.stringify({
-                    ID: Id + "",
-                    Owner: req.body.Owner,
-                    Color: req.body.Color,
-                    Size: req.body.Size,
-                    AppraisedValue: req.body.AppraisedValue,
+                    tagId: req.body.tagId,
+                    drugName: req.body.name,
+                    mfgDate: req.body.mfgDate,
                 })
-                Connection.contract.submitTransaction('CreateAsset', json);
+                Connection.contract.submitTransaction('drug-registration:RegisterDrug', json, );
                 var response = ({ "AssetId": Id })
                 res.status(200).send(response);
             })

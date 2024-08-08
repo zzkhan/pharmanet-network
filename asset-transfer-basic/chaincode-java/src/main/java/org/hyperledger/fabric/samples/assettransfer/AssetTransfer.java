@@ -46,11 +46,12 @@ public final class AssetTransfer implements ContractInterface {
         ASSET_ALREADY_EXISTS
     }
 
-    /**
-     * Creates some initial assets on the ledger.
-     *
-     * @param ctx the transaction context
-     */
+    @Transaction(intent = Transaction.TYPE.SUBMIT)
+    public String CreatJSON(final Context ctx, final String jsonString){
+        System.out.println("CreatJSON - START");
+        System.out.println("jsonString:" + jsonString);
+        return jsonString;
+    }
     @Transaction(intent = Transaction.TYPE.SUBMIT)
     public void InitLedger(final Context ctx) {
         ChaincodeStub stub = ctx.getStub();

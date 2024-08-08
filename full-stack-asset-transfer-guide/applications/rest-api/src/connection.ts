@@ -5,24 +5,24 @@ import * as path from 'path';
 
 import { promises as fs } from 'fs';
 const channelName = envOrDefault('CHANNEL_NAME', 'mychannel');
-const chaincodeName = envOrDefault('CHAINCODE_NAME', 'asset-transfer');
+const chaincodeName = envOrDefault('CHAINCODE_NAME', 'drug');
 const mspId = envOrDefault('MSP_ID', 'Org1MSP');
 //Local development and testing uncomment below code
-// const WORKSHOP_CRYPTO =envOrDefault('CRYPTO_PATH', path.resolve(__dirname, '..','..', '..', 'infrastructure', 'sample-network', 'temp'));
-// const keyPath = WORKSHOP_CRYPTO + "/enrollments/org1/users/org1user/msp/keystore/key.pem";
-// const certPath = WORKSHOP_CRYPTO + "/enrollments/org1/users/org1user/msp/signcerts/cert.pem"
-// const tlsCertPath = WORKSHOP_CRYPTO + "/channel-msp/peerOrganizations/org1/msp/tlscacerts/tlsca-signcert.pem";
+const WORKSHOP_CRYPTO =envOrDefault('CRYPTO_PATH', path.resolve('/Users/zzkhan/go/src/github.com/zzkhan/fabric-samples/test-network/organizations/peerOrganizations/org1.example.com'));
+const keyPath = WORKSHOP_CRYPTO + "/users/User1@org1.example.com/msp/keystore/priv_sk";
+const certPath = WORKSHOP_CRYPTO + "/users/User1@org1.example.com/msp/signcerts/User1@org1.example.com-cert.pem"
+const tlsCertPath = WORKSHOP_CRYPTO + "/peers/peer0.org1.example.com/tls/ca.crt";
 
 // //kubenetes certificates file path
-const WORKSHOP_CRYPTO = "/etc/secret-volume/"
-const keyPath = WORKSHOP_CRYPTO + "keyPath";
-const certPath = WORKSHOP_CRYPTO + "certPath"
-const tlsCertPath = WORKSHOP_CRYPTO + "tlsCertPath";
+// const WORKSHOP_CRYPTO = "/etc/secret-volume/"
+// const keyPath = WORKSHOP_CRYPTO + "keyPath";
+// const certPath = WORKSHOP_CRYPTO + "certPath"
+// const tlsCertPath = WORKSHOP_CRYPTO + "tlsCertPath";
 console.log("keyPath " + keyPath);
 console.log("certPath " + certPath);
 console.log("tlsCertPath " + tlsCertPath);
-const peerEndpoint = "test-network-org1-peer1-peer.localho.st:443";
-const peerHostAlias = "test-network-org1-peer1-peer.localho.st";
+const peerEndpoint = "dns:///localhost:7051";
+const peerHostAlias = "peer0.org1.example.com";
 export class Connection {
     public static contract: Contract;
     public init() {
