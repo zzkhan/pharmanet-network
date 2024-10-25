@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 1s
+  external_labels:
+    monitor: 'devopsage-monitor'
+
+scrape_configs:
+  - job_name: 'fabric'
+
+    # Retain labels
+    honor_labels: true
+    # Assumes local caliper workers are scrape targets, only one here
+    static_configs:
+    - targets: ['orderer.example.com:9443','peer0.org1.example.com:9444', 'peer0.org2.example.com:9445', 'peer0.org3.example.com:9446', 'peer0.org4.example.com:9447', 'peer0.org5.example.com:9448']
+  - job_name: cadvisor
+    scrape_interval: 5s
+    static_configs:
+    - targets: ['cadvisor:8080']
+  - job_name: caliper
+    scrape_interval: 5s
+    static_configs:
+    # assume single local caliper worker here, exposed on port 3000.
+    # host.docker.internal if on mac
+    # localhost otherwise
+    - targets: ['localhost:3000']
+  - job_name: 'pushgateway'
+    static_configs:
+      - targets: [ 'pushGateway:9091' ]

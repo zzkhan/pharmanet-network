@@ -1,6 +1,4 @@
-# Asset transfer basic sample
-
-The asset transfer basic sample demonstrates:
+# Pharmanet smart contracts
 
 - Connecting a client application to a Fabric blockchain network.
 - Submitting smart contract transactions to update ledger state.
