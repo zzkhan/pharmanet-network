@@ -12,32 +12,34 @@ function resolveCaPort() {
           port="8054"
           ;;
       "org3")
-          port="11054"
+          port="12054"
           ;;
       "org4")
-          port="13054"
+          port="10054"
           ;;
       "org5")
-          port="15054"
+          port="11054"
           ;;
       *)
           echo "Unknown org ${ORG}"
           ;;
   esac
-  return $port
+  echo "$port"
 }
 function createOrg() {
   local ORG=$1
-  infoln "Enrolling the CA admin"
+  infoln "Enrolling the CA admin for ${ORG}"
   mkdir -p organizations/peerOrganizations/$ORG.example.com/
 
-  export FABRIC_CA_CLIENT_HOME=${PWD}/organizations/peerOrganizations/$ORG.example.com/
+  export FABRIC_CA_CLIENT_HOME=${PWD}/organizations/peerOrganizations/${ORG}.example.com/
+  echo "FABRIC_CA_CLIENT_HOME ${FABRIC_CA_CLIENT_HOME}"
 
+  caPort=$(resolveCaPort "$ORG")
+  echo "RESOLVECAPORT ${caPort}"
   set -x
-  fabric-ca-client enroll -u https://admin:adminpw@localhost:7054 --caname ca-$ORG --tls.certfiles "${PWD}/organizations/fabric-ca/${ORG}/ca-cert.pem"
+  fabric-ca-client enroll -u https://admin:adminpw@localhost:$caPort --caname ca-$ORG --tls.certfiles "${PWD}/organizations/fabric-ca/${ORG}/ca-cert.pem"
   { set +x; } 2>/dev/null
 
-  caPort=resolveCaPort ORG
   echo "NodeOUs:
   Enable: true
   ClientOUIdentifier:
@@ -79,7 +81,7 @@ function createOrg() {
 
   infoln "Registering the org admin"
   set -x
-  fabric-ca-client register --caname ca-$ORG --id.name org1admin --id.secret org1adminpw --id.type admin --tls.certfiles "${PWD}/organizations/fabric-ca/${ORG}/ca-cert.pem"
+  fabric-ca-client register --caname ca-$ORG --id.name "$ORG"admin --id.secret "$ORG"adminpw --id.type admin --tls.certfiles "${PWD}/organizations/fabric-ca/${ORG}/ca-cert.pem"
   { set +x; } 2>/dev/null
 
   infoln "Generating the peer0 msp"
@@ -91,7 +93,7 @@ function createOrg() {
 
   infoln "Generating the peer0-tls certificates, use --csr.hosts to specify Subject Alternative Names"
   set -x
-  fabric-ca-client enroll -u https://peer0:peer0pw@localhost:$caPort --caname ca-$ORG -M "${PWD}/organizations/peerOrganizations/org1.example.com/peers/peer0.${ORG}.example.com/tls" --enrollment.profile tls --csr.hosts peer0.$ORG.example.com --csr.hosts localhost --tls.certfiles "${PWD}/organizations/fabric-ca/$ORG/ca-cert.pem"
+  fabric-ca-client enroll -u https://peer0:peer0pw@localhost:$caPort --caname ca-$ORG -M "${PWD}/organizations/peerOrganizations/${ORG}.example.com/peers/peer0.${ORG}.example.com/tls" --enrollment.profile tls --csr.hosts peer0."$ORG".example.com --csr.hosts localhost --tls.certfiles "${PWD}/organizations/fabric-ca/${ORG}/ca-cert.pem"
   { set +x; } 2>/dev/null
 
   # Copy the tls CA cert, server cert, server keystore to well known file names in the peer's tls directory that are referenced by peer startup config
@@ -108,7 +110,7 @@ function createOrg() {
 
   infoln "Generating the org admin msp"
   set -x
-  fabric-ca-client enroll -u https://$ORGadmin:$ORGadminpw@localhost:$caPort --caname ca-$ORG -M "${PWD}/organizations/peerOrganizations/${ORG}.example.com/users/Admin@${ORG}.example.com/msp" --tls.certfiles "${PWD}/organizations/fabric-ca/${ORG}/ca-cert.pem"
+  fabric-ca-client enroll -u https://"$ORG"admin:"$ORG"adminpw@localhost:$caPort --caname ca-$ORG -M "${PWD}/organizations/peerOrganizations/${ORG}.example.com/users/Admin@${ORG}.example.com/msp" --tls.certfiles "${PWD}/organizations/fabric-ca/${ORG}/ca-cert.pem"
   { set +x; } 2>/dev/null
 
   cp "${PWD}/organizations/peerOrganizations/${ORG}.example.com/msp/config.yaml" "${PWD}/organizations/peerOrganizations/${ORG}.example.com/users/Admin@${ORG}.example.com/msp/config.yaml"

@@ -1,0 +1,285 @@
+test:
+  name: pharmanet-benchmark
+  description: test pharmanet supply chain
+  workers:
+    number: 20
+  rounds:
+    - label: manufacturer-register-drug
+      description: Register drugs
+      txNumber: 3040
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/registerDrug.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugInstances: 2
+
+    - label: distributor-create-po
+      description: distributor-create-po
+      txNumber: 1520
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/createDrugPo.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugInstances: 2
+          requestingOrg: Org3MSP
+          requestingIdentity: distributor
+          sellerOrg: Org1MSP
+
+    - label: manufacturer-create-shipment-distributor
+      description: manufacturer-create-shipment-distributor
+      txNumber: 1520
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/createDrugShipment.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugsPerShipment: 2
+          requestingOrg: Org1MSP
+          requestingIdentity: manufacturer
+          buyerOrg: Org3MSP
+
+    - label: transporter-update-distributor-shipment
+      description: transporter-update-distributor-shipment
+      txNumber: 1520
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/updateDrugShipment.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          buyerOrg: Org3MSP
+
+    - label: manufacturer-distributor-assign-crps
+      description: Distributor CRP assignment
+      txNumber: 6080
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/assignDrugVerificationCrps.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugInstances: 2
+          assigneeOrg: Org3MSP
+
+    - label: manufacturer-distributor-assign-challenges
+      description: Distributor challenges assignment
+      txNumber: 6080
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/assignDrugChallenges.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugInstances: 2
+          assigneeOrg: Org3MSP
+
+    - label: distributor-submit-crps
+      description: Distributor verification CRPs submission
+      txNumber: 6080
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/submitDrugVerificationCrp.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugInstances: 2
+          verifyingOrg: Org3MSP
+          verifierIdentity: distributor
+
+    - label: distributor-verify-drugs
+      description: Distributor verify drug
+      txNumber: 9120
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/verifyDrugs.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugInstances: 2
+          verifyingOrg: Org3MSP
+          verifierIdentity: distributor
+
+    - label: pharmacy-create-po
+      txNumber: 1520
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/createDrugPo.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugInstances: 2
+          requestingOrg: Org4MSP
+          requestingIdentity: pharmacy
+          sellerOrg: Org3MSP
+
+    - label: distributor-create-shipment-pharmacy
+      txNumber: 1520
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/createDrugShipment.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugsPerShipment: 2
+          requestingOrg: Org3MSP
+          requestingIdentity: distributor
+          buyerOrg: Org4MSP
+
+    - label: transporter-update-pharmacy-shipment
+      txNumber: 1520
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/updateDrugShipment.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          buyerOrg: Org4MSP
+
+    # 2 Tx per drug
+    - label: manufacturer-pharmacy-assign-crps
+      description: pharmacy CRP assignment
+      txNumber: 6080
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/assignDrugVerificationCrps.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugInstances: 2
+          assigneeOrg: Org4MSP
+
+    # 2 Tx per drug
+    - label: manufacturer-pharmacy-assign-challenges
+      description: pharmacy challenges assignment
+      txNumber: 6080
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/assignDrugChallenges.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugInstances: 2
+          assigneeOrg: Org4MSP
+
+      # 2 Tx per drug
+    - label: pharmacy-submit-crps
+      description: pharmacy verification CRPs submission
+      txNumber: 6080
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/submitDrugVerificationCrp.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugInstances: 2
+          verifyingOrg: Org4MSP
+          verifierIdentity: pharmacy
+
+    # 3 Tx per drug
+    - label: pharmacy-verify-drugs
+      description: pharmacy verify drug
+      txNumber: 9120
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/verifyDrugs.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugInstances: 2
+          verifyingOrg: Org4MSP
+          verifierIdentity: pharmacy
+
+    - label: pharmacy-retail-drug
+      description: Pharmacy drug retail
+      txNumber: 3040
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 100
+      workload:
+        module: workload/retailDrug.js
+        arguments:
+          contractId: drug
+          drugNames: 1520
+          drugInstances: 2
+
+monitors:
+  transaction:
+    - module: prometheus-push
+      options:
+        pushInterval: 5000
+        pushUrl: "http://localhost:9091"
+  resource:
+    - module: prometheus
+      options:
+        url: "http://localhost:9090"
+        push_url: "http://localhost:9091"
+        metrics:
+          include: [dev-.*, couch, peer, orderer]
+          queries:
+            - name: Endorse Time (s)
+              query: rate(endorser_proposal_duration_sum{chaincode="drug"}[5m])
+              step: 1
+              label: instance
+              statistic: avg
+            - name: Max Memory (MB)
+              query: sum(container_memory_rss{name=~".+"}) by (name)
+              step: 10
+              label: name
+              statistic: max
+              multiplier: 0.000001
+        charting:
+          polar:
+            metrics: [ Max Memory (MB) ]
+          bar:
+            metrics: [ all ]

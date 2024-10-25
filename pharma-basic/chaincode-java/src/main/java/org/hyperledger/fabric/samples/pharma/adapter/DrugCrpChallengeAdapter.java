@@ -26,7 +26,8 @@ public class DrugCrpChallengeAdapter {
 
   public static List<DrugCrpChallenge> fromJson(String json) {
     try {
-      return objectMapper.readValue(json, new TypeReference<List<DrugCrpChallenge>>() {});
+      return objectMapper.readValue(json, new TypeReference<>() {
+      });
     } catch (JsonProcessingException e) {
       throw new RuntimeException(e);
     }

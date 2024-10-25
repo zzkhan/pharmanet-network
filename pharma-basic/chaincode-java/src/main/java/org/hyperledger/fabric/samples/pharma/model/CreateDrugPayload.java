@@ -4,12 +4,15 @@
 
 package org.hyperledger.fabric.samples.pharma.model;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Builder;
 import lombok.ToString;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 import org.hyperledger.fabric.contract.annotation.DataType;
 import org.hyperledger.fabric.contract.annotation.Property;
+
+import java.time.LocalDateTime;
 
 @DataType
 @Jacksonized
@@ -19,8 +22,15 @@ import org.hyperledger.fabric.contract.annotation.Property;
 public class CreateDrugPayload {
     @Property()
     String drugName;
+
     @Property()
     String tagId;
+
     @Property()
-    String mfgDate;
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    LocalDateTime manufactureDate;
+
+    @Property()
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    LocalDateTime expiryDate;
 }

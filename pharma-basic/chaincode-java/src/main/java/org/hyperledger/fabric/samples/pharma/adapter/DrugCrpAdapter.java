@@ -4,11 +4,13 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.hyperledger.fabric.samples.pharma.model.DrugCrp;
 
 import java.io.IOException;
 import java.util.List;
 
+@Slf4j
 public class DrugCrpAdapter {
   private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -18,25 +20,20 @@ public class DrugCrpAdapter {
 
   public static List<DrugCrp> fromJson(String crpJSON) {
     try {
-      return objectMapper.readValue(crpJSON, new TypeReference<List<DrugCrp>>() {});
+      log.error("Deserialising crps JSON: {}",crpJSON);
+      return objectMapper.readValue(crpJSON, new TypeReference<>() {
+      });
     } catch (JsonProcessingException e) {
-      System.out.println("Error while deserialising crps JSON: " + crpJSON);
+      log.error("Error while deserialising crps JSON: {}",crpJSON,e);
       throw new RuntimeException(e);
     }
   }
 
   public static List<DrugCrp> fromBytes(byte[] drugCrpBytes) {
     try {
-      return objectMapper.readValue(drugCrpBytes, new TypeReference<List<DrugCrp>>() {});
+      return objectMapper.readValue(drugCrpBytes, new TypeReference<>() {
+      });
     } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
-  public static byte[] toBytes(List<DrugCrp> drugCrpList) {
-    try {
-      return objectMapper.writeValueAsBytes(drugCrpList);
-    } catch (JsonProcessingException e) {
       throw new RuntimeException(e);
     }
   }

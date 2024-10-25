@@ -10,6 +10,7 @@ import org.hyperledger.fabric.samples.pharma.model.DrugStatus;
 import org.hyperledger.fabric.samples.pharma.model.PharmaErrors;
 import org.hyperledger.fabric.samples.pharma.model.PharmaNamespaces;
 import org.hyperledger.fabric.samples.pharma.model.PharmaOrg;
+import org.hyperledger.fabric.samples.pharma.model.PharmaOrgRoles;
 import org.hyperledger.fabric.shim.ChaincodeException;
 import org.hyperledger.fabric.shim.ledger.CompositeKey;
 import org.hyperledger.fabric.shim.ledger.KeyValue;
@@ -17,7 +18,9 @@ import org.hyperledger.fabric.shim.ledger.QueryResultsIterator;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
+
+import static org.hyperledger.fabric.samples.pharma.model.DrugStatus.ASSIGNED;
+import static org.hyperledger.fabric.samples.pharma.model.DrugStatus.FOR_SALE;
 
 @Slf4j
 public class DrugHelper {
@@ -61,7 +64,7 @@ public class DrugHelper {
 
   public static boolean ownsEnoughDrugQuantity(Context ctx, String ownedBy, String drugName, int quantity) {
     return getDrugs(ctx, drugName).stream()
-            .filter(drug -> List.of(DrugStatus.FOR_SALE, DrugStatus.ASSIGNED).contains(drug.getStatus()))
+            .filter(drug -> List.of(FOR_SALE, DrugStatus.ASSIGNED).contains(drug.getStatus()))
             .filter(drug -> drug.getOwner().equals(ownedBy))
             .count() >= quantity;
   }
@@ -85,12 +88,24 @@ public class DrugHelper {
     return drug;
   }
 
+  public static void verifyRequestorRole(PharmaOrg requestingOrg, PharmaOrgRoles expectedRole, String intendedAction) {
+    if (!expectedRole.equals(requestingOrg.getRole())) {
+      log.warn("Org with role {} cannot execute action {}", requestingOrg.getRole(), intendedAction);
+      throw new ChaincodeException(String.format("Action %s not allowed for role %s", intendedAction, requestingOrg.getRole()),
+              PharmaErrors.ACTION_FORBIDDEN_FOR_ROLE.message(requestingOrg.getRole().toString(), intendedAction));
+    }
+  }
+
   private static int getTotalSupply(Context ctx, String drugName) {
     var totalSupply = 0;
     QueryResultsIterator<KeyValue> drugsByNameIterator = ctx.getStub().getStateByPartialCompositeKey(PharmaNamespaces.DRUG.getPrefix(), drugName);
     for (KeyValue result : drugsByNameIterator) {
       if (StringUtils.isNotBlank(result.getStringValue())) {
-        totalSupply++;
+        var drug = DrugAdapter.fromJson(result.getStringValue());
+        log.info("getTotalSupply - drug {}", drug);
+        if(FOR_SALE == drug.getStatus() || ASSIGNED == drug.getStatus()) {
+          totalSupply++;
+        }
       }
     }
     return totalSupply;

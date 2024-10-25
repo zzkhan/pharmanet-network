@@ -3,7 +3,7 @@ package org.hyperledger.fabric.samples.pharma.helper;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
-public class DigestHelper {
+public class DigestGenerator {
   public static byte[] computeSHA256Hash(byte[] data) {
     try {
       MessageDigest digest = MessageDigest.getInstance("SHA-256");

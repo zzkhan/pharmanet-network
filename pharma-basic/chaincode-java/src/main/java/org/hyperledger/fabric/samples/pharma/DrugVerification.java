@@ -9,7 +9,7 @@ import org.hyperledger.fabric.contract.annotation.Transaction;
 import org.hyperledger.fabric.samples.pharma.adapter.DrugCrpAdapter;
 import org.hyperledger.fabric.samples.pharma.event.DrugVerificationSubmissionEvent;
 import org.hyperledger.fabric.samples.pharma.event.EventAdapter;
-import org.hyperledger.fabric.samples.pharma.helper.DigestHelper;
+import org.hyperledger.fabric.samples.pharma.helper.DigestGenerator;
 import org.hyperledger.fabric.samples.pharma.helper.DrugChallengesHelper;
 import org.hyperledger.fabric.samples.pharma.helper.DrugCrpHelper;
 import org.hyperledger.fabric.samples.pharma.helper.DrugHelper;
@@ -19,6 +19,7 @@ import org.hyperledger.fabric.samples.pharma.model.DrugCrp;
 import org.hyperledger.fabric.samples.pharma.model.DrugCrpChallenge;
 import org.hyperledger.fabric.samples.pharma.model.DrugCrpVerificationOutcome;
 import org.hyperledger.fabric.samples.pharma.model.DrugCrpVerificationOutcomeStatus;
+import org.hyperledger.fabric.samples.pharma.model.DrugStatus;
 import org.hyperledger.fabric.samples.pharma.model.PharmaErrors;
 import org.hyperledger.fabric.samples.pharma.model.PharmaOrg;
 import org.hyperledger.fabric.samples.pharma.model.PharmaOrgRoles;
@@ -27,6 +28,9 @@ import org.hyperledger.fabric.shim.ext.sbe.StateBasedEndorsement;
 import org.hyperledger.fabric.shim.ext.sbe.impl.StateBasedEndorsementFactory;
 
 import java.security.MessageDigest;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,9 +46,9 @@ import java.util.stream.Collectors;
 public class DrugVerification implements ContractInterface {
   @Transaction(intent = Transaction.TYPE.EVALUATE)
   public DrugCrp[] getUnassignedCrps(final Context ctx, final String drugName, final String tagId) {
-    PharmaOrg requestingOrg = PharmaOrgRepository.getOrg(ctx.getClientIdentity().getMSPID());
+    PharmaOrg requestingOrg = PharmaOrgRepository.getOrg(ctx, ctx.getClientIdentity().getMSPID());
 
-    verifyRequestorRole(requestingOrg, PharmaOrgRoles.MANUFACTURER, "getUnassignedCrps");
+    DrugHelper.verifyRequestorRole(requestingOrg, PharmaOrgRoles.MANUFACTURER, "getUnassignedCrps");
 
     String existingDrugKey = PharmaAssetKeyHelper.drugAssetKey(ctx, drugName, tagId).toString();
     if (!DrugHelper.drugExists(ctx, drugName, tagId)) {
@@ -61,13 +65,13 @@ public class DrugVerification implements ContractInterface {
 
   @Transaction(intent = Transaction.TYPE.EVALUATE)
   public DrugCrp[] getAssignedCrps(final Context ctx, final String drugName, final String tagId, final String assignee) {
-    PharmaOrg requestingOrg = PharmaOrgRepository.getOrg(ctx.getClientIdentity().getMSPID());
-    PharmaOrg assigneeOrg = PharmaOrgRepository.getOrg(assignee);
+    PharmaOrg requestingOrg = PharmaOrgRepository.getOrg(ctx, ctx.getClientIdentity().getMSPID());
+    PharmaOrg assigneeOrg = PharmaOrgRepository.getOrg(ctx, assignee);
 
-    verifyRequestorRole(requestingOrg, PharmaOrgRoles.MANUFACTURER, "AssignCRPs");
+    DrugHelper.verifyRequestorRole(requestingOrg, PharmaOrgRoles.MANUFACTURER, "AssignCRPs");
 
     DrugHelper.verifyDrugState(ctx, drugName, tagId, assigneeOrg, "AssignCRPs");
-
+    log.info("Fetching CRPs for drug {}-{} assigned to org {}", drugName, tagId, assigneeOrg);
     var assignedCrpsKey = PharmaAssetKeyHelper.assignedCrpsAssetKey(ctx, tagId, assigneeOrg.getName());
     String assignedCrpJson = ctx.getStub().getPrivateDataUTF8(requestingOrg.getImplicitCollectionName(), assignedCrpsKey.toString());
     List<DrugCrp> drugCrps = DrugCrpAdapter.fromJson(assignedCrpJson);
@@ -77,14 +81,16 @@ public class DrugVerification implements ContractInterface {
 
   @Transaction(intent = Transaction.TYPE.EVALUATE)
   public DrugCrpChallenge[] getDrugChallenges(final Context ctx, String drugName, String tagId) {
-    var requestingOrg = PharmaOrgRepository.getOrg(ctx.getClientIdentity().getMSPID());
+    var requestingOrg = PharmaOrgRepository.getOrg(ctx, ctx.getClientIdentity().getMSPID());
 
     if (!DrugHelper.drugExists(ctx, drugName, tagId)) {
-      throw new ChaincodeException(String.format("drug %s does not exist.", tagId));
+      throw new ChaincodeException(String.format("drug %s does not exist.", tagId),
+              PharmaErrors.ASSET_NOT_FOUND.message("Drug", PharmaAssetKeyHelper.drugAssetKey(ctx, drugName, tagId).toString()));
     }
 
     if (!DrugHelper.isDrugOwner(ctx, requestingOrg, drugName, tagId)) {
-      throw new ChaincodeException(String.format("org %s does not own drug.", requestingOrg.getName()));
+      throw new ChaincodeException(String.format("org %s does not own drug.", requestingOrg.getName()),
+              PharmaErrors.ACTION_ON_ASSET_FORBIDDEN_FOR_NON_OWNER.message("Get challenges", String.format("%s-%s", drugName, tagId), requestingOrg.getName()));
     }
 
     var assignedDrugChallenges = DrugChallengesHelper.getDrugChallenges(ctx, requestingOrg, tagId);
@@ -101,26 +107,27 @@ public class DrugVerification implements ContractInterface {
 
   @Transaction(intent = Transaction.TYPE.SUBMIT)
   public String assignCRPs(final Context ctx, final String drugName, final String tagId, final String assignee) {
-    PharmaOrg requestingOrg = PharmaOrgRepository.getOrg(ctx.getClientIdentity().getMSPID());
-    PharmaOrg assigneeOrg = PharmaOrgRepository.getOrg(assignee);
+    PharmaOrg requestingOrg = PharmaOrgRepository.getOrg(ctx, ctx.getClientIdentity().getMSPID());
+    PharmaOrg assigneeOrg = PharmaOrgRepository.getOrg(ctx, assignee);
 
-    verifyRequestorRole(requestingOrg, PharmaOrgRoles.MANUFACTURER, "submitAssignCRPs");
+    DrugHelper.verifyRequestorRole(requestingOrg, PharmaOrgRoles.MANUFACTURER, "submitAssignCRPs");
 
     DrugHelper.verifyDrugState(ctx, drugName, tagId, assigneeOrg, "submitAssignCRPs");
 
     //Get assignment CRPs from transient data
     Map<String, byte[]> transientData = ctx.getStub().getTransient();
     byte[] assignmentCrpsBytes = transientData.get("assignment-crps");
-    List<DrugCrp> crpsToAssign = DrugCrpAdapter.fromBytes(assignmentCrpsBytes);
+    var crpsToAssign = DrugCrpAdapter.fromBytes(assignmentCrpsBytes);
+    log.info("assignCRPs -> assignmentCrps for {} - {} from request {}",drugName, tagId, crpsToAssign);
     return DrugCrpHelper.saveAssignedCrps(ctx, requestingOrg.getImplicitCollectionName(), assigneeOrg.getName(), tagId, crpsToAssign);
   }
 
   @Transaction(intent = Transaction.TYPE.SUBMIT)
   public void assignChallenges(final Context ctx, final String drugName, final String tagId, final String assignee) {
-    PharmaOrg requestingOrg = PharmaOrgRepository.getOrg(ctx.getClientIdentity().getMSPID());
-    PharmaOrg assigneeOrg = PharmaOrgRepository.getOrg(assignee);
+    PharmaOrg requestingOrg = PharmaOrgRepository.getOrg(ctx, ctx.getClientIdentity().getMSPID());
+    PharmaOrg assigneeOrg = PharmaOrgRepository.getOrg(ctx, assignee);
 
-    verifyRequestorRole(requestingOrg, PharmaOrgRoles.MANUFACTURER, "assignChallenges");
+    DrugHelper.verifyRequestorRole(requestingOrg, PharmaOrgRoles.MANUFACTURER, "assignChallenges");
 
     DrugHelper.verifyDrugState(ctx, drugName, tagId, assigneeOrg, "assignChallenges");
 
@@ -130,15 +137,16 @@ public class DrugVerification implements ContractInterface {
 
     var assignedDrugCrpsKey = PharmaAssetKeyHelper.assignedCrpsAssetKey(ctx, tagId, assigneeOrg.getName());
     var assignedCrpHash = ctx.getStub().getPrivateDataHash(requestingOrg.getImplicitCollectionName(), assignedDrugCrpsKey.toString());
-
-    var assignmentCrpsBytesComputedHash = DigestHelper.computeSHA256Hash(assignmentCrpsBytes);
+    var assignmentCrps = DrugCrpAdapter.fromBytes(assignmentCrpsBytes);
+    log.info("assignChallenges -> assignmentCrps for {} - {} from request {}",drugName, tagId, assignmentCrps);
+    var assignmentCrpsBytesComputedHash = DigestGenerator.computeSHA256Hash(assignmentCrpsBytes);
 
     if (!MessageDigest.isEqual(assignmentCrpsBytesComputedHash, assignedCrpHash)) {
-      log.error("submitted CRPs do not match assigned CRPs.");
+      log.error("assignChallenges {} - {} -> submitted CRPs do not match assigned CRPs.",drugName,tagId);
       throw new ChaincodeException("submitted CRPs do not match assigned CRPs.");
     }
 
-    var assignmentCrps = DrugCrpAdapter.fromBytes(assignmentCrpsBytes);
+
     //Create challenges
     var crpChallenges = assignmentCrps.stream()
             .map(crp -> DrugCrpChallenge.builder()
@@ -168,7 +176,7 @@ public class DrugVerification implements ContractInterface {
 
   @Transaction(intent = Transaction.TYPE.SUBMIT)
   public void submitDrugVerificationCrps(final Context ctx, String drugName, String tagId) {
-    PharmaOrg verifyingOrg = PharmaOrgRepository.getOrg(ctx.getClientIdentity().getMSPID());
+    PharmaOrg verifyingOrg = PharmaOrgRepository.getOrg(ctx, ctx.getClientIdentity().getMSPID());
 
     if (!DrugHelper.drugExists(ctx, drugName, tagId)) {
       throw new ChaincodeException(String.format("drug %s does not exist.", tagId));
@@ -193,7 +201,7 @@ public class DrugVerification implements ContractInterface {
 
     Map<String, byte[]> transientData = ctx.getStub().getTransient();
     byte[] verificationCrpsBytes = transientData.get("verification-crps");
-    log.info("submitDrugVerificationCrps: Hash of VCRPs from transient data: {}", DigestHelper.computeSHA256Hash(verificationCrpsBytes));
+    log.info("submitDrugVerificationCrps: Hash of VCRPs from transient data: {}", DigestGenerator.computeSHA256Hash(verificationCrpsBytes));
     List<DrugCrp> verificationCrps = DrugCrpAdapter.fromBytes(verificationCrpsBytes);
     String verificationCrpsJson = DrugCrpAdapter.serialize(verificationCrps);
     String drugVerificationCrpsKey = PharmaAssetKeyHelper.drugVerificationCrpsKey(ctx, verifyingOrg.getName(), tagId).toString();
@@ -204,10 +212,10 @@ public class DrugVerification implements ContractInterface {
 
   @Transaction(intent = Transaction.TYPE.SUBMIT)
   public void shareAssignedCrps(final Context ctx, String drugName, String tagId, String verifier) {
-    PharmaOrg requestingOrg = PharmaOrgRepository.getOrg(ctx.getClientIdentity().getMSPID());
-    PharmaOrg verifierOrg = PharmaOrgRepository.getOrg(verifier);
+    PharmaOrg requestingOrg = PharmaOrgRepository.getOrg(ctx, ctx.getClientIdentity().getMSPID());
+    PharmaOrg verifierOrg = PharmaOrgRepository.getOrg(ctx, verifier);
 
-    verifyRequestorRole(requestingOrg, PharmaOrgRoles.MANUFACTURER, "shareAssignedCrps");
+    DrugHelper.verifyRequestorRole(requestingOrg, PharmaOrgRoles.MANUFACTURER, "shareAssignedCrps");
 
     DrugHelper.verifyDrugState(ctx, drugName, tagId, verifierOrg, "shareAssignedCrps");
 
@@ -230,7 +238,7 @@ public class DrugVerification implements ContractInterface {
 
       Map<String, byte[]> transientData = ctx.getStub().getTransient();
       byte[] transientDataAssignedCrpsBytes = transientData.get("assigned-crps");
-      byte[] transientDataAssignedCrpsBytesHash = DigestHelper.computeSHA256Hash(transientDataAssignedCrpsBytes);
+      byte[] transientDataAssignedCrpsBytesHash = DigestGenerator.computeSHA256Hash(transientDataAssignedCrpsBytes);
 
       var assignedCrpsKey = PharmaAssetKeyHelper.assignedCrpsAssetKey(ctx, tagId, verifierOrg.getName()).toString();
       byte[] assignedCrpsDataHash = ctx.getStub().getPrivateDataHash(requestingOrg.getImplicitCollectionName(), assignedCrpsKey);
@@ -259,7 +267,7 @@ public class DrugVerification implements ContractInterface {
   @Transaction(intent = Transaction.TYPE.SUBMIT)
   public DrugCrpVerificationOutcome verifyDrugCrps(final Context ctx, String drugName, String tagId) {
 
-    var verifierOrg = PharmaOrgRepository.getOrg(ctx.getClientIdentity().getMSPID());
+    var verifierOrg = PharmaOrgRepository.getOrg(ctx, ctx.getClientIdentity().getMSPID());
 
     DrugHelper.verifyDrugState(ctx, drugName, tagId, verifierOrg, "verifyDrugCrps");
 
@@ -276,7 +284,7 @@ public class DrugVerification implements ContractInterface {
 
       Map<String, byte[]> transientData = ctx.getStub().getTransient();
       byte[] transientDataVerificationCrpsBytes = transientData.get("verification-crps");
-      byte[] transientDataVerificationCrpsHash = DigestHelper.computeSHA256Hash(transientDataVerificationCrpsBytes);
+      byte[] transientDataVerificationCrpsHash = DigestGenerator.computeSHA256Hash(transientDataVerificationCrpsBytes);
 
       if (!MessageDigest.isEqual(outcome.getVerificationCrpsHash(), transientDataVerificationCrpsHash)) {
         log.error("verification CRPs for drug {} tagId {} does not match with submitted verification CRP hash", drugName, tagId);
@@ -289,7 +297,7 @@ public class DrugVerification implements ContractInterface {
       byte[] assignedCrpsBytes = ctx.getStub().getPrivateData(verifierOrg.getCrpSharedCollectionName(), assignedCrpsKey);
       List<DrugCrp> assignedCrps = DrugCrpAdapter.fromBytes(assignedCrpsBytes);
 
-      boolean crpComparisonResult = verificationCrps.stream().allMatch(assignedCrps::contains);
+      boolean crpComparisonResult = new HashSet<>(assignedCrps).containsAll(verificationCrps);
 
       if (crpComparisonResult) {
         log.info("CRP verification passed");
@@ -297,6 +305,11 @@ public class DrugVerification implements ContractInterface {
       } else {
         log.info("CRP verification failed");
         outcome.setStatus(DrugCrpVerificationOutcomeStatus.FAILED);
+
+        var failedDrug = DrugHelper.getDrug(ctx, drugName, tagId);
+        failedDrug.setStatus(DrugStatus.COUNTERFEIT);
+        failedDrug.setUpdatedDate(LocalDateTime.ofInstant(ctx.getStub().getTxTimestamp(), ZoneId.systemDefault()));
+        DrugHelper.saveDrug(ctx, failedDrug);
       }
 
       outcome.setUpdated(ctx.getStub().getTxTimestamp());
@@ -306,13 +319,4 @@ public class DrugVerification implements ContractInterface {
     }).orElseThrow(() -> new ChaincodeException(String.format("No outcome found drug tagId %s and org %s.",
             tagId, verifierOrg.getName())));
   }
-
-  private static void verifyRequestorRole(PharmaOrg requestingOrg, PharmaOrgRoles expectedRole, String intendedAction) {
-    if (!expectedRole.equals(requestingOrg.getRole())) {
-      log.warn("Org with role {} cannot execute action {}", requestingOrg.getRole(), intendedAction);
-      throw new ChaincodeException(String.format("Action %s not allowed for role %s", intendedAction, requestingOrg.getRole()),
-              PharmaErrors.ACTION_FORBIDDEN_FOR_ROLE.message(requestingOrg.getRole().toString(), intendedAction));
-    }
-  }
-
 }

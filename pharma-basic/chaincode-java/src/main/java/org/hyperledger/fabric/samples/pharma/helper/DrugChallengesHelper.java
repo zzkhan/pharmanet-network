@@ -13,7 +13,7 @@ public class DrugChallengesHelper {
   public static List<DrugCrpChallenge> getDrugChallenges(Context ctx, PharmaOrg org, String tagId) {
     String drugCrpChallengeKey = PharmaAssetKeyHelper.crpChallengeAssetKey(ctx, org.getName(), tagId).toString();
     byte[] crpChallengeData = ctx.getStub().getPrivateData(org.getCrpSharedCollectionName(), drugCrpChallengeKey);
-    if(crpChallengeData == null) {
+    if(crpChallengeData == null || crpChallengeData.length == 0) {
       return Collections.emptyList();
     }
     return DrugCrpChallengeAdapter.fromJson(new String(crpChallengeData));

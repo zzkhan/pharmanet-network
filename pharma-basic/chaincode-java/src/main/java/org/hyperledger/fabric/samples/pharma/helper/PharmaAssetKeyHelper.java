@@ -36,4 +36,12 @@ public class PharmaAssetKeyHelper {
   public static CompositeKey drugShipmentKey(Context ctx, String buyerOrg, String drugName) {
     return ctx.getStub().createCompositeKey(PharmaNamespaces.DRUG_SHIPMENT.getPrefix(), buyerOrg, drugName);
   }
+
+  public static CompositeKey drugSaleKey(Context ctx, String transactionId) {
+    return ctx.getStub().createCompositeKey(PharmaNamespaces.DRUG_SALE.getPrefix(), transactionId);
+  }
+
+  public static CompositeKey orgKey(Context ctx, String mspId) {
+    return ctx.getStub().createCompositeKey(PharmaNamespaces.ORG.getPrefix(), mspId);
+  }
 }

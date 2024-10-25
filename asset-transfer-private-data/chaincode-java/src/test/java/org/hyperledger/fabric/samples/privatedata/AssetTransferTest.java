@@ -38,10 +38,10 @@ public final class AssetTransferTest {
             ChaincodeStub stub = mock(ChaincodeStub.class);
             when(ctx.getStub()).thenReturn(stub);
             Map<String, byte[]> m = new HashMap<>();
-            m.put("asset_properties", DATA_ASSET_1_BYTES);
+            m.put("asset_properties", DATA_ASSET_2_BYTES);
             when(ctx.getStub().getTransient()).thenReturn(m);
-            when(stub.getPrivateData(ASSET_COLLECTION_NAME, TEST_ASSET_1_ID))
-                    .thenReturn(DATA_ASSET_1_BYTES);
+            when(stub.getPrivateData(ASSET_COLLECTION_NAME, TEST_ASSET_2_ID))
+                    .thenReturn(DATA_ASSET_2_BYTES);
 
             Throwable thrown = catchThrowable(() -> {
                 contract.CreateAsset(ctx);
@@ -58,23 +58,23 @@ public final class AssetTransferTest {
             Context ctx = mock(Context.class);
             ChaincodeStub stub = mock(ChaincodeStub.class);
             when(ctx.getStub()).thenReturn(stub);
-            when(stub.getMspId()).thenReturn(TEST_ORG_1_MSP);
+            when(stub.getMspId()).thenReturn(TEST_ORG_2_MSP);
             ClientIdentity ci = mock(ClientIdentity.class);
-            when(ci.getId()).thenReturn(TEST_ORG_1_USER);
-            when(ci.getMSPID()).thenReturn(TEST_ORG_1_MSP);
+            when(ci.getId()).thenReturn(TEST_ORG_2_USER);
+            when(ci.getMSPID()).thenReturn(TEST_ORG_2_MSP);
             when(ctx.getClientIdentity()).thenReturn(ci);
 
             Map<String, byte[]> m = new HashMap<>();
-            m.put("asset_properties", DATA_ASSET_1_BYTES);
+            m.put("asset_properties", DATA_ASSET_2_BYTES);
             when(ctx.getStub().getTransient()).thenReturn(m);
 
-            when(stub.getPrivateData(ASSET_COLLECTION_NAME, TEST_ASSET_1_ID))
+            when(stub.getPrivateData(ASSET_COLLECTION_NAME, TEST_ASSET_2_ID))
                     .thenReturn(new byte[0]);
 
             Asset created = contract.CreateAsset(ctx);
             assertThat(created).isEqualTo(TEST_ASSET_1);
 
-            verify(stub).putPrivateData(ASSET_COLLECTION_NAME, TEST_ASSET_1_ID, created.serialize());
+            verify(stub).putPrivateData(ASSET_COLLECTION_NAME, TEST_ASSET_2_ID, created.serialize());
         }
 
         @Test
@@ -83,32 +83,32 @@ public final class AssetTransferTest {
             Context ctx = mock(Context.class);
             ChaincodeStub stub = mock(ChaincodeStub.class);
             when(ctx.getStub()).thenReturn(stub);
-            when(stub.getMspId()).thenReturn(TEST_ORG_1_MSP);
+            when(stub.getMspId()).thenReturn(TEST_ORG_2_MSP);
             ClientIdentity ci = mock(ClientIdentity.class);
-            when(ci.getId()).thenReturn(TEST_ORG_1_USER);
+            when(ci.getId()).thenReturn(TEST_ORG_2_USER);
             when(ctx.getClientIdentity()).thenReturn(ci);
-            when(ci.getMSPID()).thenReturn(TEST_ORG_1_MSP);
+            when(ci.getMSPID()).thenReturn(TEST_ORG_2_MSP);
             final String recipientOrgMsp = "TestOrg2";
             final String buyerIdentity = "TestOrg2User";
             Map<String, byte[]> m = new HashMap<>();
-            m.put("asset_owner", ("{ \"buyerMSP\": \"" + recipientOrgMsp + "\", \"assetID\": \"" + TEST_ASSET_1_ID + "\" }").getBytes());
+            m.put("asset_owner", ("{ \"buyerMSP\": \"" + recipientOrgMsp + "\", \"assetID\": \"" + TEST_ASSET_2_ID + "\" }").getBytes());
             when(ctx.getStub().getTransient()).thenReturn(m);
 
             when(stub.getPrivateDataHash(anyString(), anyString())).thenReturn("TestHashValue".getBytes());
-            when(stub.getPrivateData(ASSET_COLLECTION_NAME, TEST_ASSET_1_ID))
-                    .thenReturn(DATA_ASSET_1_BYTES);
+            when(stub.getPrivateData(ASSET_COLLECTION_NAME, TEST_ASSET_2_ID))
+                    .thenReturn(DATA_ASSET_2_BYTES);
             CompositeKey ck = mock(CompositeKey.class);
-            when(ck.toString()).thenReturn(AGREEMENT_KEYPREFIX + TEST_ASSET_1_ID);
-            when(stub.createCompositeKey(AGREEMENT_KEYPREFIX, TEST_ASSET_1_ID)).thenReturn(ck);
-            when(stub.getPrivateData(ASSET_COLLECTION_NAME, AGREEMENT_KEYPREFIX + TEST_ASSET_1_ID)).thenReturn(buyerIdentity.getBytes(UTF_8));
+            when(ck.toString()).thenReturn(AGREEMENT_KEYPREFIX + TEST_ASSET_2_ID);
+            when(stub.createCompositeKey(AGREEMENT_KEYPREFIX, TEST_ASSET_2_ID)).thenReturn(ck);
+            when(stub.getPrivateData(ASSET_COLLECTION_NAME, AGREEMENT_KEYPREFIX + TEST_ASSET_2_ID)).thenReturn(buyerIdentity.getBytes(UTF_8));
             contract.TransferAsset(ctx);
 
             Asset exptectedAfterTransfer  = Asset.deserialize("{ \"objectType\": \"testasset\", \"assetID\": \"asset1\", \"color\": \"blue\", \"size\": 5, \"owner\": \"" +  buyerIdentity + "\", \"appraisedValue\": 300 }");
 
-            verify(stub).putPrivateData(ASSET_COLLECTION_NAME, TEST_ASSET_1_ID, exptectedAfterTransfer.serialize());
-            String collectionOwner = TEST_ORG_1_MSP + "PrivateCollection";
-            verify(stub).delPrivateData(collectionOwner, TEST_ASSET_1_ID);
-            verify(stub).delPrivateData(ASSET_COLLECTION_NAME, AGREEMENT_KEYPREFIX + TEST_ASSET_1_ID);
+            verify(stub).putPrivateData(ASSET_COLLECTION_NAME, TEST_ASSET_2_ID, exptectedAfterTransfer.serialize());
+            String collectionOwner = TEST_ORG_2_MSP + "PrivateCollection";
+            verify(stub).delPrivateData(collectionOwner, TEST_ASSET_2_ID);
+            verify(stub).delPrivateData(ASSET_COLLECTION_NAME, AGREEMENT_KEYPREFIX + TEST_ASSET_2_ID);
         }
     }
 
@@ -121,10 +121,10 @@ public final class AssetTransferTest {
             Context ctx = mock(Context.class);
             ChaincodeStub stub = mock(ChaincodeStub.class);
             when(ctx.getStub()).thenReturn(stub);
-            when(stub.getPrivateData(ASSET_COLLECTION_NAME, TEST_ASSET_1_ID))
-                    .thenReturn(DATA_ASSET_1_BYTES);
+            when(stub.getPrivateData(ASSET_COLLECTION_NAME, TEST_ASSET_2_ID))
+                    .thenReturn(DATA_ASSET_2_BYTES);
 
-            Asset asset = contract.ReadAsset(ctx, TEST_ASSET_1_ID);
+            Asset asset = contract.ReadAsset(ctx, TEST_ASSET_2_ID);
 
             assertThat(asset).isEqualTo(TEST_ASSET_1);
         }
@@ -135,9 +135,9 @@ public final class AssetTransferTest {
             Context ctx = mock(Context.class);
             ChaincodeStub stub = mock(ChaincodeStub.class);
             when(ctx.getStub()).thenReturn(stub);
-            when(stub.getStringState(TEST_ASSET_1_ID)).thenReturn(null);
+            when(stub.getStringState(TEST_ASSET_2_ID)).thenReturn(null);
 
-            Asset asset = contract.ReadAsset(ctx, TEST_ASSET_1_ID);
+            Asset asset = contract.ReadAsset(ctx, TEST_ASSET_2_ID);
             assertThat(asset).isNull();
         }
 
@@ -159,10 +159,10 @@ public final class AssetTransferTest {
 
     }
 
-    private static final String TEST_ORG_1_MSP = "TestOrg1";
-    private static final String TEST_ORG_1_USER = "testOrg1User";
+    private static final String TEST_ORG_2_MSP = "TestOrg1";
+    private static final String TEST_ORG_2_USER = "testOrg1User";
 
-    private static final String TEST_ASSET_1_ID = "asset1";
-    private static final Asset TEST_ASSET_1 = new Asset("testasset", "asset1", "blue", 5, TEST_ORG_1_USER);
-    private static final byte[] DATA_ASSET_1_BYTES = "{ \"objectType\": \"testasset\", \"assetID\": \"asset1\", \"color\": \"blue\", \"size\": 5, \"owner\": \"testOrg1User\", \"appraisedValue\": 300 }".getBytes();
+    private static final String TEST_ASSET_2_ID = "asset1";
+    private static final Asset TEST_ASSET_1 = new Asset("testasset", "asset1", "blue", 5, TEST_ORG_2_USER);
+    private static final byte[] DATA_ASSET_2_BYTES = "{ \"objectType\": \"testasset\", \"assetID\": \"asset1\", \"color\": \"blue\", \"size\": 5, \"owner\": \"testOrg1User\", \"appraisedValue\": 300 }".getBytes();
 }

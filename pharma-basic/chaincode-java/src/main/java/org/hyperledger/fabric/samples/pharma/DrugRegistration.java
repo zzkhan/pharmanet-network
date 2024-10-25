@@ -7,6 +7,8 @@ package org.hyperledger.fabric.samples.pharma;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.extern.slf4j.Slf4j;
 import org.hyperledger.fabric.contract.Context;
 import org.hyperledger.fabric.contract.ContractInterface;
@@ -16,24 +18,23 @@ import org.hyperledger.fabric.contract.annotation.Info;
 import org.hyperledger.fabric.contract.annotation.Transaction;
 import org.hyperledger.fabric.samples.pharma.adapter.DrugAdapter;
 import org.hyperledger.fabric.samples.pharma.adapter.DrugCrpAdapter;
-import org.hyperledger.fabric.samples.pharma.helper.DigestHelper;
+import org.hyperledger.fabric.samples.pharma.adapter.PharmaOrgAdapter;
+import org.hyperledger.fabric.samples.pharma.helper.DigestGenerator;
 import org.hyperledger.fabric.samples.pharma.helper.DrugHelper;
 import org.hyperledger.fabric.samples.pharma.helper.PharmaAssetKeyHelper;
 import org.hyperledger.fabric.samples.pharma.model.CreateDrugPayload;
 import org.hyperledger.fabric.samples.pharma.model.Drug;
 import org.hyperledger.fabric.samples.pharma.model.DrugCrp;
 import org.hyperledger.fabric.samples.pharma.model.PharmaErrors;
-import org.hyperledger.fabric.samples.pharma.model.PharmaNamespaces;
+import org.hyperledger.fabric.samples.pharma.model.PharmaOrg;
 import org.hyperledger.fabric.samples.pharma.model.PharmaOrgRoles;
+import org.hyperledger.fabric.samples.pharma.model.PharmaOrgs;
 import org.hyperledger.fabric.shim.ChaincodeException;
 import org.hyperledger.fabric.shim.ext.sbe.StateBasedEndorsement;
 import org.hyperledger.fabric.shim.ext.sbe.impl.StateBasedEndorsementFactory;
 import org.hyperledger.fabric.shim.ledger.CompositeKey;
-import org.hyperledger.fabric.shim.ledger.KeyValue;
-import org.hyperledger.fabric.shim.ledger.QueryResultsIterator;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -46,10 +47,50 @@ import java.util.Map;
 @Default
 @Slf4j
 public final class DrugRegistration implements ContractInterface {
-  private final ObjectMapper objectMapper = new ObjectMapper();
+  private final ObjectMapper objectMapper;
 
   public DrugRegistration() {
+    objectMapper = new ObjectMapper();
+    objectMapper.registerModule(new JavaTimeModule());
+    objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+  }
+  private static final String IMPLICIT_COLLECTION_PREFIX = "_implicit_org_";
+
+  @Transaction(intent = Transaction.TYPE.SUBMIT)
+  public void InitLedger(final Context ctx) {
+    log.info("Initialising PharmaNet organisations");
+
+    var pharmanetOrgs = List.of(PharmaOrg.builder()
+            .name(PharmaOrgs.MANUFACTURER.getMspId())
+            .role(PharmaOrgRoles.MANUFACTURER)
+            .implicitCollectionName(IMPLICIT_COLLECTION_PREFIX + PharmaOrgs.MANUFACTURER.getMspId())
+            .build(),
+    PharmaOrg.builder()
+            .name(PharmaOrgs.TRANSPORTER.getMspId())
+            .role(PharmaOrgRoles.TRANSPORTER)
+            .implicitCollectionName(IMPLICIT_COLLECTION_PREFIX + PharmaOrgs.TRANSPORTER.getMspId())
+            .build(),
+    PharmaOrg.builder()
+            .name(PharmaOrgs.DISTRIBUTOR.getMspId())
+            .role(PharmaOrgRoles.DISTRIBUTOR)
+            .crpSharedCollectionName("Org1MSPOrg3MSPCRPCollection")
+            .implicitCollectionName(IMPLICIT_COLLECTION_PREFIX + PharmaOrgs.DISTRIBUTOR.getMspId())
+            .build(),
+    PharmaOrg.builder()
+            .name(PharmaOrgs.PHARMACY.getMspId())
+            .role(PharmaOrgRoles.RETAILER)
+            .crpSharedCollectionName("Org1MSPOrg4MSPCRPCollection")
+            .implicitCollectionName(IMPLICIT_COLLECTION_PREFIX + PharmaOrgs.PHARMACY.getMspId())
+            .build(),
+    PharmaOrg.builder()
+            .name(PharmaOrgs.CONSUMER.getMspId())
+            .role(PharmaOrgRoles.CONSUMER)
+            .implicitCollectionName(IMPLICIT_COLLECTION_PREFIX + PharmaOrgs.CONSUMER.getMspId())
+            .crpSharedCollectionName("Org1MSPOrg5MSPCRPCollection")
+            .build());
+
+    pharmanetOrgs.forEach(org -> ctx.getStub().putStringState(PharmaAssetKeyHelper.orgKey(ctx, org.getName()).toString(), PharmaOrgAdapter.serialize(org)));
   }
 
   /**
@@ -62,13 +103,9 @@ public final class DrugRegistration implements ContractInterface {
   public Drug RegisterDrug(final Context ctx,
                          final String createDrugPayloadJson) {
 
-    var requestingOrg = PharmaOrgRepository.getOrg(ctx.getClientIdentity().getMSPID());
+    var requestingOrg = PharmaOrgRepository.getOrg(ctx, ctx.getClientIdentity().getMSPID());
 
-    if (!PharmaOrgRoles.MANUFACTURER.equals(requestingOrg.getRole())) {
-      log.error("Org type {} cannot register drugs in the network", requestingOrg.getRole());
-      throw new ChaincodeException("Only MANUFACTURER can create drugs.",
-              PharmaErrors.ACTION_FORBIDDEN_FOR_ROLE.message(requestingOrg.getRole().toString(), "CreateDrug"));
-    }
+    DrugHelper.verifyRequestorRole(requestingOrg, PharmaOrgRoles.MANUFACTURER,"RegisterDrug");
 
     var createDrugPayload = toCreateDrugPayload(createDrugPayloadJson);
 
@@ -86,11 +123,12 @@ public final class DrugRegistration implements ContractInterface {
     String crpKey = PharmaAssetKeyHelper.crpAssetKey(ctx, createDrugPayload.getTagId()).toString();
     ctx.getStub().putPrivateData(requestingOrg.getImplicitCollectionName(), crpKey, crpListJson);
 
-    byte[] drugCrpHash = DigestHelper.computeSHA256Hash(drugCrpBytes);
+    byte[] drugCrpHash = DigestGenerator.computeSHA256Hash(drugCrpBytes);
     var newDrug = Drug.builder()
             .tagId(createDrugPayload.getTagId())
             .name(createDrugPayload.getDrugName())
-            .mfgDate(createDrugPayload.getMfgDate())
+            .manufactureDate(createDrugPayload.getManufactureDate())
+            .expiryDate(createDrugPayload.getExpiryDate())
             .manufacturer(requestingOrg.getName())
             .owner(requestingOrg.getName())
             .crpHash(drugCrpHash)
@@ -108,44 +146,6 @@ public final class DrugRegistration implements ContractInterface {
     ctx.getStub().setEvent("DRUG-REGISTRATION", DrugAdapter.serialize(newDrug).getBytes(StandardCharsets.UTF_8));
 
     return newDrug;
-  }
-
-  /**
-   * Retrieves an asset with the specified ID from the ledger.
-   *
-   * @param ctx   the transaction context
-   * @param tagId the ID of the asset
-   * @return the asset found on the ledger if there was one
-   */
-  @Transaction(intent = Transaction.TYPE.EVALUATE)
-  public Drug ReadDrug(final Context ctx, final String drugName, final String tagId) {
-
-    if(!DrugHelper.drugExists(ctx, drugName, tagId)){
-      String errorMessage = String.format("Asset %s does not exist", tagId);
-      throw new ChaincodeException(errorMessage, PharmaErrors.ASSET_NOT_FOUND.message("Drug", String.format("%s-%s", drugName, tagId)));
-    }
-
-    return DrugHelper.getDrug(ctx, drugName, tagId);
-  }
-
-  /**
-   * Retrieves an asset with the specified ID from the ledger.
-   *
-   * @param ctx   the transaction context
-   * @return the asset found on the ledger if there was one
-   */
-  @Transaction(intent = Transaction.TYPE.EVALUATE)
-  public Drug[] ReadAllDrugs(final Context ctx) {
-
-    CompositeKey partialDrugsKey = ctx.getStub().createCompositeKey(PharmaNamespaces.DRUG.getPrefix());
-    QueryResultsIterator<KeyValue> drugsIterator = ctx.getStub().getStateByPartialCompositeKey(partialDrugsKey);
-    List<Drug> allDrugs = new ArrayList<>();
-    for (KeyValue result : drugsIterator) {
-      allDrugs.add(DrugAdapter.fromJson(result.getStringValue()));
-    }
-
-    log.info("returning all drugs {}", allDrugs);
-    return allDrugs.toArray(new Drug[0]);
   }
 
   private CreateDrugPayload toCreateDrugPayload(String createDrugPayloadJson) {

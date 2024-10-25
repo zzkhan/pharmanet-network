@@ -17,6 +17,7 @@ import org.hyperledger.fabric.samples.pharma.adapter.DrugShipmentAdapter;
 import org.hyperledger.fabric.samples.pharma.helper.DrugHelper;
 import org.hyperledger.fabric.samples.pharma.helper.DrugPoHelper;
 import org.hyperledger.fabric.samples.pharma.helper.DrugShipmentHelper;
+import org.hyperledger.fabric.samples.pharma.helper.DrugVerificationOutcomeHelper;
 import org.hyperledger.fabric.samples.pharma.helper.EventHelper;
 import org.hyperledger.fabric.samples.pharma.helper.PharmaAssetKeyHelper;
 import org.hyperledger.fabric.samples.pharma.model.Drug;
@@ -31,10 +32,13 @@ import org.hyperledger.fabric.shim.ext.sbe.impl.StateBasedEndorsementFactory;
 import org.hyperledger.fabric.shim.ledger.CompositeKey;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.hyperledger.fabric.samples.pharma.model.PharmaOrgRoles.DISTRIBUTOR;
 import static org.hyperledger.fabric.samples.pharma.model.PharmaOrgRoles.MANUFACTURER;
@@ -61,13 +65,13 @@ public final class DrugTransfer implements ContractInterface {
    */
   @Transaction(intent = Transaction.TYPE.SUBMIT)
   public DrugPo createDrugPO(final Context ctx, final String seller, final String drugName, final int quantity) {
-    var buyerOrg = PharmaOrgRepository.getOrg(ctx.getClientIdentity().getMSPID());
+    var buyerOrg = PharmaOrgRepository.getOrg(ctx, ctx.getClientIdentity().getMSPID());
 
     if (!List.of(DISTRIBUTOR, RETAILER).contains(buyerOrg.getRole())) {
       throw new ChaincodeException("Only DISTRIBUTOR or RETAILER can create POs.");
     }
 
-    var sellerOrg = PharmaOrgRepository.getOrg(seller);
+    var sellerOrg = PharmaOrgRepository.getOrg(ctx, seller);
     if (!List.of(MANUFACTURER, DISTRIBUTOR).contains(sellerOrg.getRole())) {
       throw new ChaincodeException("Only MANUFACTURER or DISTRIBUTOR can be a seller.");
     }
@@ -104,23 +108,37 @@ public final class DrugTransfer implements ContractInterface {
    * @return drugShipment newly created shipment asset
    */
   @Transaction(intent = Transaction.TYPE.SUBMIT)
-  public DrugShipment createDrugShipment(final Context ctx, final String buyer, final String drugName, final List<String> tagIds, final String transporter) {
-    var sellerOrg = PharmaOrgRepository.getOrg(ctx.getClientIdentity().getMSPID());
-    var buyerOrg = PharmaOrgRepository.getOrg(buyer);
+  public DrugShipment createDrugShipment(final Context ctx, final String buyer, final String drugName, final String tagIdCommaDelimitted, final String transporter) {
+
+    log.info("createDrugShipment - {} {} {} {}", buyer, drugName, tagIdCommaDelimitted, transporter);
+    var tagIds = Stream.of(tagIdCommaDelimitted.split(",")).collect(Collectors.toList());
+    log.info("tagIds {}", tagIds);
+
+    var sellerOrg = PharmaOrgRepository.getOrg(ctx, ctx.getClientIdentity().getMSPID());
+    log.info("sellerOrg - {}", sellerOrg);
+    var buyerOrg = PharmaOrgRepository.getOrg(ctx, buyer);
+    log.info("buyerOrg - {}", buyerOrg);
 
     if (!List.of(MANUFACTURER, DISTRIBUTOR).contains(sellerOrg.getRole())) {
       throw new ChaincodeException("Only MANUFACTURER or DISTRIBUTOR can create shipments.",
               PharmaErrors.ACTION_FORBIDDEN_FOR_ROLE.message(sellerOrg.getRole().toString(), "CreateDrugShipment"));
     }
 
-    var transporterOrg = PharmaOrgRepository.getOrg(transporter);
+    if (!List.of(DISTRIBUTOR, RETAILER).contains(buyerOrg.getRole())) {
+      throw new ChaincodeException("Only DISTRIBUTOR or RETAILER can receive shipments.",
+              PharmaErrors.CANNOT_SHIP_TO_ROLE.message(sellerOrg.getRole().toString()));
+    }
+
+    var transporterOrg = PharmaOrgRepository.getOrg(ctx, transporter);
+    log.info("transporterOrg - {}", transporterOrg);
     if (!transporterOrg.getRole().equals(TRANSPORTER)) {
       throw new ChaincodeException("Shipments can only be created with a TRANSPORTER.",
-              PharmaErrors.ACTION_FORBIDDEN_FOR_ROLE.message(transporterOrg.getRole().toString(), "CreateDrugShipment"));
+              PharmaErrors.ACTION_FORBIDDEN_FOR_ROLE.message(transporterOrg.getRole().toString(), "Handle shipments"));
     }
 
     var drugsToShip = new ArrayList<Drug>();
     tagIds.forEach(tagId -> {
+      log.info("verifyDrugState - {} {}", tagId, drugName);
       DrugHelper.verifyDrugState(ctx, drugName, tagId, sellerOrg, "createDrugShipment");
       drugsToShip.add(DrugHelper.getDrug(ctx, drugName, tagId));
     });
@@ -172,8 +190,8 @@ public final class DrugTransfer implements ContractInterface {
   @Transaction(intent = Transaction.TYPE.SUBMIT)
   public DrugShipment updateDrugShipment(final Context ctx, final String buyer, final String drugName) {
 
-    var requestingOrg = PharmaOrgRepository.getOrg(ctx.getClientIdentity().getMSPID());
-    var buyerOrg = PharmaOrgRepository.getOrg(buyer);
+    var requestingOrg = PharmaOrgRepository.getOrg(ctx, ctx.getClientIdentity().getMSPID());
+    var buyerOrg = PharmaOrgRepository.getOrg(ctx, buyer);
 
     if (!TRANSPORTER.equals(requestingOrg.getRole())) {
       throw new ChaincodeException("Only transporters can update shipping status.",
@@ -224,25 +242,28 @@ public final class DrugTransfer implements ContractInterface {
    * @return Drug - updated drug
    */
   private Drug transferDrug(final Context ctx, final String drugName, final String tagId, final String newOwner) {
-    var requestingOrg = PharmaOrgRepository.getOrg(ctx.getClientIdentity().getMSPID());
-    var newOwnerOrg = PharmaOrgRepository.getOrg(newOwner);
+    var requestingOrg = PharmaOrgRepository.getOrg(ctx, ctx.getClientIdentity().getMSPID());
+    var newOwnerOrg = PharmaOrgRepository.getOrg(ctx, newOwner);
 
-    System.out.printf("transferDrug -> transferring drug %s-%s from current owner %s to new owner %s%n", drugName, tagId, requestingOrg.getName(), newOwnerOrg.getName());
+    log.info("transferDrug -> transferring drug {}-{} from current owner {} to new owner {}",
+            drugName, tagId, requestingOrg.getName(), newOwnerOrg.getName());
 
     DrugHelper.verifyDrugState(ctx, drugName, tagId, requestingOrg, "transferDrug");
 
+    var maybeVerificationOutcome = DrugVerificationOutcomeHelper.findVerificationOutcomeByVerifier(ctx, tagId, requestingOrg);
+    if (maybeVerificationOutcome.isEmpty()) {
+      if (!(requestingOrg.getRole().equals(MANUFACTURER) || requestingOrg.getRole().equals(TRANSPORTER))) {
+        throw new ChaincodeException(String.format("Verification record not found for drug %s-%s and verifier party %s.", drugName, tagId, requestingOrg.getName()),
+                PharmaErrors.DRUG_VERIFICATION_STATE_INVALID.message(String.format("%s-%s", drugName, tagId), requestingOrg.getName()));
+      }
+    }
+
     var drugToTransfer = DrugHelper.getDrug(ctx, drugName, tagId);
+    drugToTransfer.setOwner(newOwner);
+    drugToTransfer.setUpdatedDate(LocalDateTime.ofInstant(ctx.getStub().getTxTimestamp(), ZoneId.systemDefault()));
+    drugToTransfer.setStatus(DrugStatus.ASSIGNED);
 
-    var updatedDrug = Drug.builder()
-            .tagId(drugToTransfer.getTagId())
-            .name(drugToTransfer.getName())
-            .mfgDate(drugToTransfer.getMfgDate())
-            .manufacturer(drugToTransfer.getManufacturer())
-            .owner(newOwnerOrg.getName())
-            .status(DrugStatus.ASSIGNED)
-            .build();
-
-    var drug = DrugHelper.saveDrug(ctx, updatedDrug);
+    var drug = DrugHelper.saveDrug(ctx, drugToTransfer);
     var drugKey = PharmaAssetKeyHelper.drugAssetKey(ctx, drug.getName(), drug.getTagId());
 
     //set key level endorsement for new owner for transferred drug

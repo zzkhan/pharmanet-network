@@ -5,10 +5,12 @@ import org.hyperledger.fabric.contract.Context;
 import org.hyperledger.fabric.samples.pharma.adapter.DrugCrpVerificationAdapter;
 import org.hyperledger.fabric.samples.pharma.model.DrugCrpVerificationOutcome;
 import org.hyperledger.fabric.samples.pharma.model.PharmaNamespaces;
+import org.hyperledger.fabric.samples.pharma.model.PharmaOrg;
 import org.hyperledger.fabric.shim.ledger.KeyValue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
@@ -43,5 +45,12 @@ public class DrugVerificationOutcomeHelper {
       outcomes.add(DrugCrpVerificationAdapter.deserialise(keyValue.getStringValue()));
     }
     return outcomes;
+  }
+
+  public static Optional<DrugCrpVerificationOutcome> findVerificationOutcomeByVerifier(Context ctx, String tagId, PharmaOrg verifyingOrg) {
+    return getVerificationOutcomes(ctx, tagId)
+            .stream()
+            .filter(v -> v.getVerifierOrg().equals(verifyingOrg.getName()))
+            .findFirst();
   }
 }
